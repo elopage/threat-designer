@@ -1,6 +1,6 @@
 locals {
   prefix                = "threat-designer"
-  lambda_src_path       = "../backend/app"
+  lambda_src_path       = "${path.module}/../backend/app"
   building_path         = "./build/"
   api_lambda_invoke_url = "arn:aws:apigateway:${var.region}:lambda:path/2015-03-31/functions/${aws_lambda_alias.backend.arn}/invocations"
   authorizer_invoke_url = "arn:aws:apigateway:${var.region}:lambda:path/2015-03-31/functions/${aws_lambda_alias.authorizer_lambda_alias.arn}/invocations"
