@@ -46,8 +46,8 @@ data "archive_file" "authorizer_lambda_code_zip" {
 # Create zip file from local data
 data "archive_file" "lambda_layer_authorization" {
   type        = "zip"
-  source_dir  = "build/authorization_deps_code"
-  output_path = "build/authorization_deps.zip"
+  source_dir  = "${path.module}/build/authorization_deps_code"
+  output_path = "${path.module}/build/authorization_deps.zip"
 
   depends_on = [null_resource.build]
 }
