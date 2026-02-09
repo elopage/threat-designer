@@ -4,23 +4,23 @@ resource "null_resource" "build" {
   }
 
   provisioner "local-exec" {
-    command     = "bash ${path.module}/build.sh"
+    command     = "bash build.sh"
     working_dir = path.module # Ensures script runs from the infrastructure directory
   }
 }
 
 data "archive_file" "backend_lambda_code_zip" {
   type        = "zip"
-  source_dir  = "build/backend_code"
-  output_path = "build/backend.zip"
+  source_dir  = "${path.module}/build/backend_code"
+  output_path = "${path.module}/build/backend.zip"
 
   depends_on = [null_resource.build]
 }
 
 data "archive_file" "authorizer_lambda_code_zip" {
   type        = "zip"
-  source_dir  = "build/authorizer_code"
-  output_path = "build/authorizer.zip"
+  source_dir  = "${path.module}/build/authorizer_code"
+  output_path = "${path.module}/build/authorizer.zip"
 
   depends_on = [null_resource.build]
 }
