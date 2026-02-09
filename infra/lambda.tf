@@ -1,9 +1,17 @@
 #======================== Backend Lambda ======================
 
+locals {
+  # Hash backend source files + requirements to detect actual code changes
+  backend_source_hash = base64sha256(join("", concat(
+    [for f in sort(fileset("${path.module}/../backend/app", "**/*.py")) : filesha256("${path.module}/../backend/app/${f}")],
+    [filesha256("${path.module}/../backend/app/requirements.txt")]
+  )))
+}
+
 resource "aws_lambda_function" "backend" {
   description                    = "Lambda function for threat designer api"
   filename                       = data.archive_file.backend_lambda_code_zip.output_path
-  source_code_hash               = data.archive_file.backend_lambda_code_zip.output_base64sha256
+  source_code_hash               = local.backend_source_hash
   function_name                  = "${local.prefix}-lambda-backend"
   handler                        = "index.lambda_handler"
   memory_size                    = 512
@@ -69,19 +77,48 @@ resource "aws_iam_role_policy" "lambda_threat_designer_api_policy" {
   })
 }
 
-resource "aws_lambda_provisioned_concurrency_config" "backend" {
-  # depends_on = ["null_resource.alias_provisioned_concurrency_transition_delay"]
-  function_name                     = aws_lambda_alias.backend.function_name
-  provisioned_concurrent_executions = var.provisioned_lambda_concurrency
-  qualifier                         = aws_lambda_alias.backend.name
-}
-
-
 resource "aws_lambda_alias" "backend" {
   name             = "dev"
   description      = "provisioned concurrency"
   function_name    = aws_lambda_function.backend.arn
   function_version = aws_lambda_function.backend.version
+}
 
-  routing_config {}
+resource "null_resource" "wait_for_backend_alias_stabilization" {
+  triggers = {
+    alias_version = aws_lambda_alias.backend.function_version
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      for i in {1..90}; do
+        ROUTING=$(aws lambda get-alias \
+          --function-name ${aws_lambda_function.backend.function_name} \
+          --name ${aws_lambda_alias.backend.name} \
+          --query 'RoutingConfig.AdditionalVersionWeights' \
+          --output text)
+        
+        if [ "$ROUTING" = "None" ] || [ -z "$ROUTING" ]; then
+          echo "Backend alias stabilized, no routing config detected"
+          exit 0
+        fi
+        
+        echo "Waiting for backend routing config to clear... attempt $i"
+        sleep 2
+      done
+      
+      echo "Timeout waiting for backend alias to stabilize"
+      exit 1
+    EOT
+  }
+
+  depends_on = [aws_lambda_alias.backend]
+}
+
+resource "aws_lambda_provisioned_concurrency_config" "backend" {
+  function_name                     = aws_lambda_alias.backend.function_name
+  provisioned_concurrent_executions = var.provisioned_lambda_concurrency
+  qualifier                         = aws_lambda_alias.backend.name
+  
+  depends_on = [null_resource.wait_for_backend_alias_stabilization]
 }

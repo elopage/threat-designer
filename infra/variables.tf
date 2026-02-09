@@ -42,7 +42,7 @@ variable "lambda_concurrency" {
 variable "provisioned_lambda_concurrency" {
   type        = number
   description = "Provision concurrency setting for the lambda"
-  default     = 3
+  default     = 12
 }
 
 variable "reasoning_models" {
@@ -51,9 +51,11 @@ variable "reasoning_models" {
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
     "eu.anthropic.claude-sonnet-4-20250514-v1:0",
     "us.anthropic.claude-opus-4-1-20250805-v1:0",
+    "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "global.anthropic.claude-sonnet-4-20250514-v1:0",
-    "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "global.anthropic.claude-opus-4-5-20251101-v1:0"
   ]
 }
 
@@ -93,56 +95,56 @@ variable "model_main" {
   })
   default = {
     assets = {
-      id         = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
       max_tokens = 64000
       reasoning_budget = {
-        "1" = 24000
-        "2" = 48000
+        "1" = 16000
+        "2" = 32000
         "3" = 63999
       }
     }
     flows = {
-      id         = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
       max_tokens = 64000
       reasoning_budget = {
-        "1" = 24000
-        "2" = 48000
+        "1" = 16000
+        "2" = 32000
         "3" = 63999
       }
     }
     threats = {
-      id         = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+      id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
       max_tokens = 64000
       reasoning_budget = {
-        "1" = 24000
-        "2" = 48000
+        "1" = 16000
+        "2" = 32000
         "3" = 63999
       }
     }
     threats_agent = {
-      id         = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
       max_tokens = 64000
       reasoning_budget = {
-        "1" = 24000
-        "2" = 48000
+        "1" = 16000
+        "2" = 32000
         "3" = 63999
       }
     }
     gaps = {
-      id         = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
       max_tokens = 64000
       reasoning_budget = {
-        "1" = 24000
-        "2" = 48000
+        "1" = 16000
+        "2" = 32000
         "3" = 63999
       }
     }
     attack_tree = {
-      id         = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
       max_tokens = 64000
       reasoning_budget = {
-        "1" = 24000
-        "2" = 63999
+        "1" = 16000
+        "2" = 32000
         "3" = 63999
       }
     }
@@ -150,8 +152,39 @@ variable "model_main" {
 }
 
 variable "model_sentry" {
-  type    = string
-  default = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+  type = object({
+    id               = string
+    max_tokens       = number
+    reasoning_budget = map(number)
+  })
+  default = {
+    id         = "global.anthropic.claude-opus-4-5-20251101-v1:0"
+    max_tokens = 64000
+    reasoning_budget = {
+      "1" = 16000
+      "2" = 32000
+      "3" = 63999
+    }
+  }
+}
+
+variable "openai_model_sentry" {
+  type = object({
+    id               = string
+    max_tokens       = number
+    reasoning_effort = map(string)
+  })
+  description = "OpenAI model configuration for Sentry assistant"
+  default = {
+    id         = "gpt-5.2-2025-12-11"
+    max_tokens = 128000
+    reasoning_effort = {
+      "0" = "none"
+      "1" = "low"
+      "2" = "medium"
+      "3" = "high"
+    }
+  }
 }
 
 variable "model_struct" {
@@ -256,23 +289,23 @@ variable "openai_model_main" {
   description = "OpenAI model configurations for main workflow stages"
   default = {
     assets = {
-      id         = "gpt-5.1-2025-11-13"
-      max_tokens = 64000
-      reasoning_effort = {
-        "0" = "none"
-        "1" = "medium"
-        "2" = "high"
-        "3" = "high"
-      }
-    }
-    flows = {
-      id         = "gpt-5.1-2025-11-13"
+      id         = "gpt-5.2-2025-12-11"
       max_tokens = 64000
       reasoning_effort = {
         "0" = "none"
         "1" = "low"
-        "2" = "low"
-        "3" = "medium"
+        "2" = "medium"
+        "3" = "high"
+      }
+    }
+    flows = {
+      id         = "gpt-5.2-2025-12-11"
+      max_tokens = 64000
+      reasoning_effort = {
+        "0" = "none"
+        "1" = "low"
+        "2" = "medium"
+        "3" = "high"
       }
     }
     threats = {
@@ -286,7 +319,7 @@ variable "openai_model_main" {
       }
     }
     threats_agent = {
-      id         = "gpt-5.1-2025-11-13"
+      id         = "gpt-5.2-2025-12-11"
       max_tokens = 128000
       reasoning_effort = {
         "0" = "none"
@@ -296,7 +329,7 @@ variable "openai_model_main" {
       }
     }
     gaps = {
-      id         = "gpt-5.1-2025-11-13"
+      id         = "gpt-5.2-2025-12-11"
       max_tokens = 64000
       reasoning_effort = {
         "0" = "none"
@@ -306,7 +339,7 @@ variable "openai_model_main" {
       }
     }
     attack_tree = {
-      id         = "gpt-5.1-2025-11-13"
+      id         = "gpt-5.2-2025-12-11"
       max_tokens = 128000
       reasoning_effort = {
         "0" = "none"
@@ -345,11 +378,14 @@ variable "openai_model_summary" {
 variable "openai_reasoning_models" {
   type        = list(string)
   description = "List of OpenAI GPT-5 models that support reasoning"
-  default     = ["gpt-5.1-2025-11-13", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07"]
+  default     = ["gpt-5.2-2025-12-11", "gpt-5.1-2025-11-13", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07"]
 }
 
-variable "openai_sentry_model_id" {
+
+
+variable "tavily_api_key" {
   type        = string
-  description = "OpenAI model ID for Sentry assistant"
-  default     = "gpt-5.1-2025-11-13"
+  description = "Tavily API key for web search and content extraction (optional)"
+  default     = ""
+  sensitive   = true
 }

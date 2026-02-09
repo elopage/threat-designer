@@ -1,57 +1,69 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+
+// Scroll configuration constants
+const SCROLL_CONFIG = {
+  SMOOTH_DURATION: 400, // Animation duration in ms (for reference)
+  MIN_DISTANCE_FOR_SMOOTH: 10, // Minimum pixels to trigger smooth scroll (lowered from 50)
+  NEAR_BOTTOM_THRESHOLD: 5, // Pixels from bottom to consider "at bottom"
+};
 
 export function useScrollToBottom(ref) {
   const [showButton, setShowButton] = useState(false);
-  const isAnimatingRef = useRef(false);
+  const resizeObserverRef = useRef(null);
+  const mutationObserverRef = useRef(null);
+  const lastScrollHeightRef = useRef(0);
+  const isSmoothScrollingRef = useRef(false);
 
-  const scrollToBottom = useCallback(() => {
-    const container = ref.current;
-    if (!container || isAnimatingRef.current) return;
+  const scrollToBottom = useCallback(
+    (smooth = false) => {
+      const container = ref.current;
+      if (!container) return;
 
-    try {
-      // Get start and target positions
-      const startPosition = container.scrollTop;
-      const targetPosition = container.scrollHeight - container.clientHeight;
+      try {
+        const targetPosition = container.scrollHeight - container.clientHeight;
+        const currentPosition = container.scrollTop;
+        const distance = Math.abs(targetPosition - currentPosition);
 
-      // Skip animation if already at bottom
-      if (Math.abs(startPosition - targetPosition) < 5) return;
-
-      // Animation parameters
-      const duration = 500; // milliseconds
-      const startTime = performance.now();
-      isAnimatingRef.current = true;
-
-      // Animation function with easing
-      const animateScroll = (currentTime) => {
-        const elapsed = currentTime - startTime;
-
-        if (elapsed >= duration) {
-          // Animation complete
-          container.scrollTop = targetPosition;
-          isAnimatingRef.current = false;
+        // Skip if already at bottom
+        if (distance < SCROLL_CONFIG.NEAR_BOTTOM_THRESHOLD) {
+          setShowButton(false);
+          isSmoothScrollingRef.current = false;
           return;
         }
 
-        // Calculate progress with cubic ease-in-out
-        const progress = elapsed / duration;
-        const easedProgress =
-          progress < 0.5
-            ? 4 * progress * progress * progress
-            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        // Determine scroll behavior:
+        // Use instant scroll if:
+        // - smooth is false (explicit instant request)
+        // - distance is less than MIN_DISTANCE_FOR_SMOOTH (too short for animation)
+        const shouldUseSmooth = smooth && distance >= SCROLL_CONFIG.MIN_DISTANCE_FOR_SMOOTH;
 
-        // Apply new position
-        container.scrollTop = startPosition + (targetPosition - startPosition) * easedProgress;
+        if (shouldUseSmooth) {
+          // Smooth scroll using native scrollTo with behavior
+          isSmoothScrollingRef.current = true;
+          container.scrollTo({
+            top: targetPosition,
+            behavior: "smooth",
+          });
 
-        // Continue animation
-        requestAnimationFrame(animateScroll);
-      };
+          // Clear smooth scrolling flag after animation completes
+          // Using a timeout based on typical smooth scroll duration
+          setTimeout(() => {
+            isSmoothScrollingRef.current = false;
+          }, SCROLL_CONFIG.SMOOTH_DURATION);
+        } else {
+          // Instant scroll
+          isSmoothScrollingRef.current = false;
+          container.scrollTop = targetPosition;
+        }
 
-      requestAnimationFrame(animateScroll);
-    } catch (err) {
-      isAnimatingRef.current = false;
-      console.error("Error scrolling:", err);
-    }
-  }, [ref]);
+        setShowButton(false);
+      } catch (err) {
+        console.error("Error scrolling:", err);
+        isSmoothScrollingRef.current = false;
+      }
+    },
+    [ref]
+  );
 
   const checkScrollPosition = useCallback(() => {
     const container = ref.current;
@@ -70,25 +82,90 @@ export function useScrollToBottom(ref) {
     const container = ref.current;
     if (!container) return;
 
-    // Attach scroll listener
-    const handleScroll = () => checkScrollPosition();
+    // Attach scroll listener - show button when user scrolls up and cancel smooth scroll on user interaction
+    const handleScroll = () => {
+      // Cancel smooth scroll animation if user manually scrolls
+      if (isSmoothScrollingRef.current) {
+        // Check if this is a user-initiated scroll (not programmatic)
+        // We detect this by checking if we're not near the target position
+        const targetPosition = container.scrollHeight - container.clientHeight;
+        const distanceFromTarget = Math.abs(container.scrollTop - targetPosition);
+
+        // If we're far from target during smooth scroll, user likely interrupted
+        if (distanceFromTarget > SCROLL_CONFIG.NEAR_BOTTOM_THRESHOLD) {
+          // User is scrolling manually, cancel the smooth scroll
+          isSmoothScrollingRef.current = false;
+        }
+      }
+      checkScrollPosition();
+    };
     container.addEventListener("scroll", handleScroll, { passive: true });
 
-    // Observe content changes
-    const observer = new MutationObserver(() => {
-      setTimeout(checkScrollPosition, 50);
+    // Use ResizeObserver to detect content size changes
+    resizeObserverRef.current = new ResizeObserver(() => {
+      // Check if scrollHeight changed (content grew)
+      if (container.scrollHeight !== lastScrollHeightRef.current) {
+        lastScrollHeightRef.current = container.scrollHeight;
+        checkScrollPosition();
+      }
     });
 
-    observer.observe(container, { childList: true, subtree: true });
+    // Observe all children recursively for size changes
+    const observeAllChildren = (element) => {
+      if (resizeObserverRef.current && element) {
+        resizeObserverRef.current.observe(element);
+        Array.from(element.children).forEach(observeAllChildren);
+      }
+    };
 
-    // Initial check
-    setTimeout(checkScrollPosition, 100);
+    // Observe the container
+    resizeObserverRef.current.observe(container);
+    observeAllChildren(container);
+
+    // Use MutationObserver to detect when new elements are added
+    mutationObserverRef.current = new MutationObserver((mutations) => {
+      let shouldCheck = false;
+      mutations.forEach((mutation) => {
+        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+          shouldCheck = true;
+          // Observe new elements
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE && resizeObserverRef.current) {
+              resizeObserverRef.current.observe(node);
+            }
+          });
+        }
+        if (mutation.type === "characterData") {
+          shouldCheck = true;
+        }
+      });
+      if (shouldCheck) {
+        checkScrollPosition();
+      }
+    });
+
+    mutationObserverRef.current.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    // Initial check after a brief delay to let content render
+    requestAnimationFrame(() => {
+      lastScrollHeightRef.current = container.scrollHeight;
+      checkScrollPosition();
+    });
 
     return () => {
       container.removeEventListener("scroll", handleScroll);
-      observer.disconnect();
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+      if (mutationObserverRef.current) {
+        mutationObserverRef.current.disconnect();
+      }
     };
-  }, [checkScrollPosition, ref.current]); // Add ref.current as dependency
+  }, [checkScrollPosition, ref.current]);
 
-  return { showButton, scrollToBottom, setShowButton };
+  return { showButton, scrollToBottom, setShowButton, checkScrollPosition };
 }

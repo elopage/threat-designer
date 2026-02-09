@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 import { useScrollToBottom } from "./useScrollToBottom";
 import ChatContent from "./ChatContent";
@@ -12,25 +12,34 @@ import ThinkingBudgetWrapper from "./ThinkingBudgetWrapper";
 import ToolsConfigWrapper from "./ToolsConfigWrapper";
 import { useParams } from "react-router";
 import AgentLoader from "./LoadingAgent";
+import { useAgentState } from "./useAgentState";
+import { ClockFading, ToolCase } from "lucide-react";
 
 // localStorage keys
-const THINKING_ENABLED_KEY = "thinkingEnabled";
-const THINKING_BUDGET_KEY = "thinkingBudget";
 const TOOLS_CONFIG_KEY = "toolsConfig";
 
 function ChatInterface({ user, inTools }) {
   const chatContainerRef = useRef(null);
-  const { showButton, scrollToBottom, setShowButton } = useScrollToBottom(chatContainerRef);
+  const { showButton, scrollToBottom, setShowButton, checkScrollPosition } =
+    useScrollToBottom(chatContainerRef);
 
   const isFirstMount = useRef(true);
-  const [isFirstMountComplete, setIsFirstMountComplete] = useState(false);
+
+  // Use consolidated agent state hook
+  const {
+    state: { budget, thinkingEnabled, toolItems, toolsInitialized, isFirstMountComplete },
+    setBudget,
+    setThinkingEnabled,
+    setToolItems,
+    setFirstMountComplete,
+  } = useAgentState();
 
   useEffect(() => {
     if (isFirstMount.current) {
       isFirstMount.current = false;
-      setIsFirstMountComplete(true);
+      setFirstMountComplete();
     }
-  }, []);
+  }, [setFirstMountComplete]);
 
   // Get both contexts
   const functions = useContext(ChatSessionFunctionsContext);
@@ -43,31 +52,7 @@ function ChatInterface({ user, inTools }) {
   // Check if using OpenAI provider
   const isOpenAI = import.meta.env.VITE_MODEL_PROVIDER === "openai";
 
-  // Load preferences from localStorage on mount
-  const [budget, setBudget] = useState(() => {
-    const savedBudget = localStorage.getItem(THINKING_BUDGET_KEY);
-    // For OpenAI, default to "1" (low) and never allow "0"
-    // if (isOpenAI) {
-    //   return savedBudget && savedBudget !== "0" ? savedBudget : "1";
-    // }
-    return savedBudget || "1";
-  });
-
-  const [thinkingEnabled, setThinkingEnabled] = useState(() => {
-    // For OpenAI, reasoning is always enabled
-    // if (isOpenAI) {
-    //   return true;
-    // }
-    const savedEnabled = localStorage.getItem(THINKING_ENABLED_KEY);
-    if (savedEnabled !== null) {
-      return savedEnabled === "true";
-    }
-    return budget !== "0";
-  });
-
-  // State for managing tool items properly
-  const [toolItems, setToolItems] = useState([]);
-  const [toolsInitialized, setToolsInitialized] = useState(false);
+  // State for managing tool items properly - now handled by useAgentState
 
   // Generate stable sessionId - only once on mount
   const sessionId = useParams()["*"];
@@ -83,7 +68,7 @@ function ChatInterface({ user, inTools }) {
     if (chatTurns.length === 0) {
       setShowButton(false);
     }
-  }, [chatTurns.length]);
+  }, [chatTurns.length, setShowButton]);
 
   // Get available tools from functions context
   const { availableTools = [] } = functions;
@@ -95,35 +80,32 @@ function ChatInterface({ user, inTools }) {
         .map((tool) => `${tool.id}-${tool.name || tool.content || tool.id}`)
         .join(",");
 
-      setToolItems((prevItems) => {
-        const prevToolsKey = prevItems.map((item) => `${item.id}-${item.content}`).join(",");
+      const prevToolsKey = toolItems.map((item) => `${item.id}-${item.content}`).join(",");
 
-        if (prevToolsKey === toolsKey && toolsInitialized) {
-          return prevItems;
+      if (prevToolsKey === toolsKey && toolsInitialized) {
+        return;
+      }
+
+      const savedToolsConfig = localStorage.getItem(TOOLS_CONFIG_KEY);
+      let savedTools = {};
+
+      try {
+        if (savedToolsConfig) {
+          savedTools = JSON.parse(savedToolsConfig);
         }
+      } catch (e) {
+        console.error("Error parsing saved tools config:", e);
+      }
 
-        const savedToolsConfig = localStorage.getItem(TOOLS_CONFIG_KEY);
-        let savedTools = {};
+      const newItems = availableTools.map((tool) => ({
+        id: tool.id,
+        content: tool.name || tool.content || tool.id,
+        enabled: savedTools[tool.id] !== undefined ? savedTools[tool.id] : true,
+      }));
 
-        try {
-          if (savedToolsConfig) {
-            savedTools = JSON.parse(savedToolsConfig);
-          }
-        } catch (e) {
-          console.error("Error parsing saved tools config:", e);
-        }
-
-        const newItems = availableTools.map((tool) => ({
-          id: tool.id,
-          content: tool.name || tool.content || tool.id,
-          enabled: savedTools[tool.id] !== undefined ? savedTools[tool.id] : true,
-        }));
-
-        setToolsInitialized(true);
-        return newItems;
-      });
+      setToolItems(newItems);
     }
-  }, [availableTools, toolsInitialized]);
+  }, [availableTools, toolsInitialized, toolItems, setToolItems]);
 
   // Save budget to localStorage when it changes
   const handleBudgetChange = useCallback(
@@ -134,14 +116,8 @@ function ChatInterface({ user, inTools }) {
       }
 
       setBudget(newBudget);
-      localStorage.setItem(THINKING_BUDGET_KEY, newBudget);
-
-      if (newBudget !== "0") {
-        setThinkingEnabled(true);
-        localStorage.setItem(THINKING_ENABLED_KEY, "true");
-      }
     },
-    [isOpenAI]
+    [isOpenAI, setBudget]
   );
 
   // Handle thinking toggle
@@ -153,36 +129,32 @@ function ChatInterface({ user, inTools }) {
       // }
 
       setThinkingEnabled(isToggled);
-      localStorage.setItem(THINKING_ENABLED_KEY, String(isToggled));
 
       if (isToggled && budget === "0") {
         const defaultBudget = "1";
         setBudget(defaultBudget);
-        localStorage.setItem(THINKING_BUDGET_KEY, defaultBudget);
       }
     },
-    [budget, isOpenAI]
+    [budget, setThinkingEnabled, setBudget]
   );
 
   // Handle tool items change and save to localStorage
-  const handleToolItemsChange = useCallback((newItems) => {
-    setToolItems(newItems);
-
-    const toolsConfig = {};
-    newItems.forEach((item) => {
-      toolsConfig[item.id] = item.enabled;
-    });
-
-    localStorage.setItem(TOOLS_CONFIG_KEY, JSON.stringify(toolsConfig));
-  }, []);
+  const handleToolItemsChange = useCallback(
+    (newItems) => {
+      setToolItems(newItems);
+    },
+    [setToolItems]
+  );
 
   // Handle sending messages through the session
   const handleSendMessage = useCallback(
     async ({ message, sessionId, context }) => {
       // sendMessage signature: (sessionId, userMessage, interrupt, interruptResponse, context)
-      await functions.sendMessage(sessionId, message, false, null, context);
+      // Note: ChatMessage component handles scrolling via its useEffect when isLast changes
+      // We don't need to call scrollToBottom here as it would race with ChatMessage's scroll
+      functions.sendMessage(sessionId, message, false, null, context);
     },
-    [functions, sessionId, thinkingEnabled, budget, toolItems]
+    [functions]
   );
 
   // Handle stop streaming
@@ -218,12 +190,7 @@ function ChatInterface({ user, inTools }) {
       {
         id: "think",
         label: "Think",
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 6v6l4 2" />
-          </svg>
-        ),
+        icon: <ClockFading size={18} />,
         // For OpenAI, make it non-toggleable (always active)
         isToggle: true, //!isOpenAI,
         showDropdown: true,
@@ -240,14 +207,7 @@ function ChatInterface({ user, inTools }) {
       {
         id: "tools",
         label: "Tools",
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-          </svg>
-        ),
+        icon: <ToolCase size={18} />,
         isToggle: false,
         showDropdown: true,
         dropdownContent: () => (
@@ -262,7 +222,6 @@ function ChatInterface({ user, inTools }) {
       handleActionButtonClick,
       toolItems,
       handleToolItemsChange,
-      isOpenAI,
     ]
   );
 
@@ -289,7 +248,7 @@ function ChatInterface({ user, inTools }) {
     <div className={inTools ? "tools-main-div" : "main-div"}>
       <div
         style={{
-          marginBottom: "10px",
+          marginBottom: "4px",
         }}
       ></div>
       <div className="tools-container-wrapper">
@@ -297,7 +256,13 @@ function ChatInterface({ user, inTools }) {
           {chatTurns.length === 0 ? (
             <AgentLogo />
           ) : (
-            <div className="stick-to-bottom-content">
+            <div
+              className="stick-to-bottom-content"
+              style={{ padding: "8px" }}
+              aria-live={isStreaming ? "polite" : "off"}
+              aria-atomic="false"
+              aria-relevant="additions"
+            >
               <ChatContent
                 chatTurns={chatTurns}
                 user={user}
@@ -309,15 +274,21 @@ function ChatInterface({ user, inTools }) {
           )}
         </div>
 
+        {/* Fade overlay at bottom of chat */}
+        {chatTurns.length > 0 && <div className="stick-to-bottom-fade" />}
+
         {showButton && (
-          <ScrollToBottomButton scroll={scrollToBottom} className="scroll-to-bottom-button" />
+          <ScrollToBottomButton
+            scroll={() => scrollToBottom(true)}
+            className="scroll-to-bottom-button"
+          />
         )}
       </div>
 
       <div>
         {error && <ErrorContent message={error} dismiss={handleDismissError} />}
 
-        <div style={{ padding: "5px" }}>
+        <div style={{ paddingBottom: "5px" }}>
           <ChatInput
             onSendMessage={handleSendMessage}
             onStopStreaming={handleStopStreaming}
@@ -331,6 +302,7 @@ function ChatInterface({ user, inTools }) {
             sessionId={sessionId}
             onToggleButton={handleToggleButton}
             onDropdownClick={handleDropdownClick}
+            onHeightChange={checkScrollPosition}
           />
         </div>
       </div>

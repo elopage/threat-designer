@@ -13,6 +13,15 @@ instance.interceptors.request.use(async (config) => {
     const session = await fetchAuthSession();
     const token = session.tokens.idToken.toString();
     config.headers.Authorization = `Bearer ${token}`;
+
+    // Add cache-busting timestamp to GET requests to prevent browser caching
+    if (config.method === "get") {
+      config.params = {
+        ...config.params,
+        _t: Date.now(),
+      };
+    }
+
     return config;
   } catch (error) {
     return Promise.reject(error);
@@ -38,7 +47,8 @@ async function startThreatModeling(
   assumptions = null,
   replay = false,
   id = null,
-  instructions = null
+  instructions = null,
+  imageType = null
 ) {
   const statsPath = "";
   const postData = {
@@ -51,6 +61,7 @@ async function startThreatModeling(
     id,
     reasoning,
     instructions,
+    image_type: imageType,
   };
   return instance.post(statsPath, postData);
 }
@@ -80,10 +91,10 @@ async function generateUrl(fileType) {
   return instance.post(statsPath, postData);
 }
 
-async function getDownloadUrl(fileName) {
+async function getDownloadUrl(threatModelId) {
   const downloadPath = "/download";
   const postData = {
-    s3_location: fileName,
+    threat_model_id: threatModelId,
   };
   try {
     const response = await instance.post(downloadPath, postData);
@@ -94,6 +105,19 @@ async function getDownloadUrl(fileName) {
     });
 
     return fileResponse.data;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+async function getDownloadUrlsBatch(threatModelIds) {
+  const downloadPath = "/download/batch";
+  const postData = {
+    threat_model_ids: threatModelIds,
+  };
+  try {
+    const response = await instance.post(downloadPath, postData);
+    return response.data.results;
   } catch (error) {
     return Promise.reject(error);
   }
@@ -140,6 +164,7 @@ export {
   generateUrl,
   updateTm,
   getDownloadUrl,
+  getDownloadUrlsBatch,
   deleteTm,
   getThreatModelingAllResults,
   getThreatModelingTrail,

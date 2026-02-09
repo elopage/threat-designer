@@ -1,28 +1,14 @@
 import React from "react";
 import TextContent from "./TextContent";
-import ThinkingContent from "./ThinkingContent";
-import ThreatModelingTools from "./ThreatModelingTools";
 
-const ContentResolver = React.memo(({ msg, type, isBlockComplete, isParentFirstMount }) => {
+const ContentResolver = React.memo(({ msg, type, webSearchResults, disableMarkdown }) => {
   switch (type) {
-    case "tool":
-      return (
-        <ThreatModelingTools
-          toolName={msg.toolName}
-          content={msg.content}
-          toolStart={!msg.isComplete}
-          error={msg.error}
-          isParentFirstMount={isParentFirstMount}
-        />
-      );
     case "text":
-      return <TextContent content={msg.content} />;
-    case "think":
       return (
-        <ThinkingContent
+        <TextContent
           content={msg.content}
-          thinkingLoading={!isBlockComplete}
-          isParentFirstMount={isParentFirstMount}
+          webSearchResults={webSearchResults}
+          disableMarkdown={disableMarkdown}
         />
       );
     default:

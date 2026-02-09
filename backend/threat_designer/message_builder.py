@@ -17,13 +17,30 @@ class MessageBuilder:
         image_data: str,
         description: str,
         assumptions: str,
+        image_type: str = None,
     ) -> None:
         """Message builder constructor"""
 
         self.image_data = image_data
         self.description = description
         self.assumptions = assumptions
+        self.image_type = image_type
         self.provider = os.environ.get(ENV_MODEL_PROVIDER, MODEL_PROVIDER_BEDROCK)
+
+    def _get_mime_type(self) -> str:
+        """Determine MIME type from image_type parameter.
+
+        Returns:
+            str: The MIME type string ('image/png' or 'image/jpeg')
+        """
+        if self.image_type:
+            image_type_lower = self.image_type.lower()
+            if "png" in image_type_lower:
+                return "image/png"
+            elif "jpeg" in image_type_lower or "jpg" in image_type_lower:
+                return "image/jpeg"
+        # Default to JPEG for backward compatibility
+        return "image/jpeg"
 
     def _format_asset_list(self, assets) -> str:
         """Helper function to format asset names as a bulleted list."""
@@ -57,12 +74,13 @@ class MessageBuilder:
         self, caching: bool = False, details: bool = True
     ) -> List[Dict[str, Any]]:
         """Base message for all messages."""
+        mime_type = self._get_mime_type()
 
         base_message = [
             {"type": "text", "text": "<architecture_diagram>"},
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{self.image_data}"},
+                "image_url": {"url": f"data:{mime_type};base64,{self.image_data}"},
             },
             {"type": "text", "text": "</architecture_diagram>"},
         ]
@@ -322,22 +340,13 @@ Using any other values will result in validation errors. These are the ONLY acce
 
 {threat_sources}
 
-Any threat using an actor NOT in this list is INVALID and must be flagged.
 </valid_threat_source_categories>"""
             gap_msg.append({"type": "text", "text": threat_sources_text})
 
         gap_msg.append(
             {
                 "type": "text",
-                "text": """Perform the gap analysis for the threat model given the information at hand. \n
-                Beyond missing threats pay attention as well on: \n
-                - Are all the grounding rules honored? \n
-                - Are there duplicate threats that could be merged? \n
-                - If applicable, have previous gaps been addressed? \n
-                - Does the current threats respect the shared responsibility model? \n
-                - Does all current threats honor assumptions?\n
-                At the end rate the model (1-10). If not already, what would it take it to make it at least 9/10? \n
-                """,
+                "text": "Review the threat model for gaps",
             }
         )
 

@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useMemo } from "react";
-import { eventBus } from "./eventBus";
 import { checkForInterruptInChatTurns } from "./context/utils";
 import { useChatSessionFunctions } from "./useChatSessionFunctions";
 import { SENTRY_ENABLED } from "./context/constants";
@@ -50,14 +49,12 @@ export const ChatSessionProvider = ({ children }) => {
     initializedSessions,
     initializingPromises,
     toolsFetched,
-    eventBus,
     checkForInterruptInChatTurns,
   });
 
   // Auto-flush on page unload/refresh
   useEffect(() => {
     const handleBeforeUnload = () => {
-      console.log("Page unloading, flushing all sessions");
       stableFunctions.flushAllSessions();
     };
 
@@ -77,8 +74,6 @@ export const ChatSessionProvider = ({ children }) => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log("ChatSessionProvider unmounting, flushing all sessions");
-
       sessionRefs.current.forEach((refs) => {
         if (refs.eventSource) {
           refs.eventSource.close();

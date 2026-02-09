@@ -4,17 +4,25 @@ resource "aws_bedrockagentcore_agent_runtime" "sentry" {
   role_arn           = aws_iam_role.sentry_role[0].arn
   environment_variables = merge(
     {
-      SESSION_TABLE  = aws_dynamodb_table.sentry_session[0].id,
-      S3_BUCKET      = aws_s3_bucket.architecture_bucket.id,
-      REGION         = var.region,
-      MODEL_PROVIDER = var.model_provider
+      SESSION_TABLE      = aws_dynamodb_table.sentry_session[0].id,
+      ATTACK_TREE_TABLE  = aws_dynamodb_table.attack_tree_data.id,
+      S3_BUCKET          = aws_s3_bucket.architecture_bucket.id,
+      REGION             = var.region,
+      MODEL_PROVIDER     = var.model_provider
     },
     var.model_provider == "bedrock" ? {
-      MODEL_ID = var.model_sentry
+      MODEL_ID         = var.model_sentry.id,
+      MAX_TOKENS       = tostring(var.model_sentry.max_tokens),
+      REASONING_BUDGET = jsonencode(var.model_sentry.reasoning_budget)
     } : {},
     var.model_provider == "openai" ? {
-      OPENAI_API_KEY = var.openai_api_key,
-      MODEL_ID       = var.openai_sentry_model_id
+      OPENAI_API_KEY    = var.openai_api_key,
+      MODEL_ID          = var.openai_model_sentry.id,
+      MAX_TOKENS        = tostring(var.openai_model_sentry.max_tokens),
+      REASONING_EFFORT  = jsonencode(var.openai_model_sentry.reasoning_effort)
+    } : {},
+    var.tavily_api_key != "" ? {
+      TAVILY_API_KEY = var.tavily_api_key
     } : {}
   )
   authorizer_configuration {
@@ -33,6 +41,10 @@ resource "aws_bedrockagentcore_agent_runtime" "sentry" {
   }
   request_header_configuration {
     request_header_allowlist = ["Authorization"]
+  }
+  lifecycle_configuration {
+    idle_runtime_session_timeout = 3600
+    max_lifetime = 28800
   }
   depends_on = [null_resource.docker_build_push]
 }
@@ -193,6 +205,16 @@ resource "aws_iam_role_policy" "agent_core_policy" {
         "Resource" : [
           "${aws_dynamodb_table.sentry_session[0].arn}",
           "${aws_dynamodb_table.sentry_session[0].arn}/*"
+        ]
+      },
+      {
+        "Sid" : "AttackTreeTableRead",
+        "Effect" : "Allow",
+        "Action" : [
+          "dynamodb:GetItem"
+        ],
+        "Resource" : [
+          "${aws_dynamodb_table.attack_tree_data.arn}"
         ]
       },
       {

@@ -50,13 +50,13 @@ const UserChatMessage = React.memo(({ message, user }) => {
           flex: 1,
           minWidth: 0,
           overflow: "hidden",
-          marginTop: "-14px",
+          marginTop: "-6px",
         }}
       >
         <div
           style={{
             backgroundColor: colorBackgroundChatBubbleIncoming,
-            padding: "1px 12px 1px 12px",
+            padding: "8px 12px",
             borderRadius: "8px",
             width: "100%",
           }}
@@ -66,6 +66,7 @@ const UserChatMessage = React.memo(({ message, user }) => {
             type="text"
             thinkingLoading={false}
             isBlockComplete={true}
+            disableMarkdown={true}
           />
         </div>
       </div>

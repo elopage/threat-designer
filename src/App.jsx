@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
-import TopNavigationMFE from "./components/TopNavigationMFE/TopNavigationMFE";
+import { useEffect, useState, useCallback } from "react";
 import AppLayoutMFE from "./components/AppLayoutMFE/AppLayoutMFE";
 import LoginPageInternal from "./pages/Landingpage/Landingpage";
 import { Spinner } from "@cloudscape-design/components";
-import { getUser } from "./services/Auth/auth";
+import { getUser, logOut } from "./services/Auth/auth";
 import { SpaceBetween } from "@cloudscape-design/components";
 import { SplitPanelProvider } from "./SplitPanelContext";
 import customTheme from "./customTheme";
@@ -13,6 +12,8 @@ import { applyTheme } from "@cloudscape-design/components/theming";
 import { ChatSessionProvider } from "./components/Agent/ChatContext";
 import { ThemeProvider } from "./components/ThemeContext";
 import AppRefreshManager from "./AppRefreshManager";
+import { SidebarProvider, SidebarInset } from "./components/ui/sidebar";
+import { AppSidebar } from "./components/Sidebar";
 
 const App = () => {
   const [loading, setLoading] = useState(true);
@@ -69,6 +70,13 @@ const App = () => {
     applyMode(newEffectiveTheme === "light" ? Mode.Light : Mode.Dark);
     localStorage.setItem("colorMode", colorMode);
 
+    // Apply dark class to document for shadcn/ui sidebar theming
+    if (newEffectiveTheme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
     const handleSystemThemeChange = () => {
@@ -76,6 +84,13 @@ const App = () => {
         const updatedEffectiveTheme = getEffectiveTheme(colorMode);
         setEffectiveTheme(updatedEffectiveTheme); // Update the state
         applyMode(updatedEffectiveTheme === "light" ? Mode.Light : Mode.Dark);
+
+        // Update dark class for shadcn/ui sidebar theming
+        if (updatedEffectiveTheme === "dark") {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
       }
     };
 
@@ -98,14 +113,24 @@ const App = () => {
       const user = await getUser();
       setAuthUser(user);
     } catch (error) {
-      console.log(error);
+      // Auth check failed - user not logged in
       setAuthUser(null);
     } finally {
-      setTimeout(() => {
-        setLoading(false);
-      }, 2000);
+      setLoading(false);
     }
   };
+
+  const handleLogout = useCallback(async () => {
+    setLoading(true);
+    try {
+      await logOut();
+      setAuthUser(null);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   return (
     <div>
@@ -124,14 +149,22 @@ const App = () => {
           <AppRefreshManager>
             <ChatSessionProvider>
               <SplitPanelProvider>
-                <TopNavigationMFE
-                  user={authUser}
-                  setAuthUser={checkAuthState}
-                  colorMode={colorMode}
-                  setThemeMode={setThemeMode}
-                  effectiveTheme={effectiveTheme}
-                />
-                <AppLayoutMFE user={authUser} colorMode={colorMode} setThemeMode={setThemeMode} />
+                <SidebarProvider defaultOpen={false}>
+                  <AppSidebar
+                    user={authUser}
+                    colorMode={colorMode}
+                    effectiveTheme={effectiveTheme}
+                    setThemeMode={setThemeMode}
+                    onLogout={handleLogout}
+                  />
+                  <SidebarInset>
+                    <AppLayoutMFE
+                      user={authUser}
+                      colorMode={colorMode}
+                      setThemeMode={setThemeMode}
+                    />
+                  </SidebarInset>
+                </SidebarProvider>
               </SplitPanelProvider>
             </ChatSessionProvider>
           </AppRefreshManager>

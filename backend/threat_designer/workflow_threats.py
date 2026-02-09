@@ -41,6 +41,7 @@ def create_agent_human_message(state: ThreatState) -> HumanMessage:
         state.get("image_data"),
         state.get("description", ""),
         list_to_string(state.get("assumptions", [])),
+        state.get("image_type"),
     )
 
     # Check for starred threats in replay mode
@@ -79,7 +80,6 @@ def agent_node(state: ThreatState, config: RunnableConfig) -> Command:
     job_id = state.get("job_id", "unknown")
     tool_use = state.get("tool_use", 0)
     gap_tool_use = state.get("gap_tool_use", 0)
-    gap_called_since_reset = state.get("gap_called_since_reset", False)
 
     # Initialize messages if empty
     if not state.get("messages"):
@@ -93,7 +93,6 @@ def agent_node(state: ThreatState, config: RunnableConfig) -> Command:
             job_state=JobState.THREAT.value,
             tool_use=tool_use,
             gap_tool_use=gap_tool_use,
-            gap_called_since_reset=gap_called_since_reset,
         )
 
         # Create initial system prompt with optional instructions
@@ -112,7 +111,6 @@ def agent_node(state: ThreatState, config: RunnableConfig) -> Command:
             message_count=len(state["messages"]),
             tool_use=tool_use,
             gap_tool_use=gap_tool_use,
-            gap_called_since_reset=gap_called_since_reset,
         )
         messages = state["messages"]
 

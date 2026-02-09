@@ -1,7 +1,7 @@
 const customTheme = {
   tokens: {
     colorBackgroundLayoutMain: {
-      dark: "#18181B",
+      dark: "#101012",
       light: "#FAFAF9",
     },
     colorBackgroundContainerContent: {
@@ -120,8 +120,8 @@ const customTheme = {
       dark: "#424242",
     },
     colorBackgroundButtonNormalDefault: {
-      light: "transparent",
-      dark: "transparent",
+      light: "#F5F5F4",
+      dark: "#1D1D20",
     },
     colorTextButtonPrimaryDefault: {
       light: "#FAFAF9",

@@ -59,17 +59,17 @@ Lightning Mode provides:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/insights_dark.png">
-  <img alt="sentry" src="./assets/insights.png">
+  <img alt="sentry" src="./assets/insights.png" style="margin-bottom: 20px;">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/attack_tree_dark.png">
-  <img alt="sentry" src="./assets/attack_tree.png">
+  <img alt="sentry" src="./assets/attack_tree.png" style="margin-bottom: 20px;">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/sentry_dark.png">
-  <img alt="sentry" src="./assets/sentry.png">
+  <img alt="sentry" src="./assets/sentry.png" style="margin-bottom: 20px;">
 </picture>
 
 <picture>
@@ -130,10 +130,11 @@ Threat Designer supports two AI providers. Choose one based on your preference:
 
 You must enable access to the following models in your AWS region:
 
+- **Claude 4.5 Opus**
 - **Claude 4.5 Sonnet**
 - **Claude 4.5 Haiku**
 
-To enable Claude models, follow the instructions [here](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access-modify.html).
+To enable Claude models, follow the instructions [here](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html). Make sure you are already subscribed to the models otherwise you will receive an `AccessDeniedException` exception whe using the application.
 
 > **Note:** If deploying in a non-US region, verify the inference profile ID for your region. See [Supported Regions and models for inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html).
 
@@ -142,7 +143,7 @@ To enable Claude models, follow the instructions [here](https://docs.aws.amazon.
 You'll need:
 
 - A valid OpenAI API key
-- Access to GPT-5.1 or GPT-5 Mini models
+- Access to GPT-5.2 or GPT-5 Mini models
 
 You'll be prompted to enter your API key during deployment.
 
@@ -208,15 +209,14 @@ Threat Designer supports two AI providers that can be selected during deployment
 ```
 Select AI model provider:
 1) Amazon Bedrock (Claude) (default)
-2) OpenAI (GPT-5.1)
+2) OpenAI (GPT-5.2)
 ```
 
 #### Amazon Bedrock Configuration (default model)
 
 **Used Models:**
 
-- **Claude 4.5 Sonnet** - For complex reasoning tasks
-- **Claude 4.5 Haiku** - For faster, lighter tasks
+- **Claude 4.5 family models**
 
 **Key Characteristics:**
 
@@ -228,7 +228,7 @@ Select AI model provider:
 **Used Models:**
 
 - **GPT-5 Mini** (default) - Faster and more cost-effective
-- **GPT-5.1** - Maximum reasoning capability
+- **GPT-5.2** - Maximum reasoning capability
 
 **Key Characteristics:**
 
@@ -249,6 +249,41 @@ To switch between Amazon Bedrock and OpenAI:
 2. Select a different provider when prompted
 
 > **Important:** Existing conversation sessions from one provider cannot be continued with a different provider. You'll need to start new threat modeling sessions after switching.
+
+### Web Search Integration (Optional Feature)
+
+Sentry can perform real-time web searches to research CVEs, vulnerabilities, and security topics using [Tavily](https://tavily.com/). This feature is **optional** and requires a Tavily API key.
+
+#### Enabling Web Search
+
+During deployment, you will be prompted:
+
+```
+Enter your Tavily API key (optional, press Enter to skip):
+(Enables web search and content extraction in Sentry assistant)
+```
+
+- **With API key**: Sentry gains access to `tavily_search` and `tavily_extract` tools for real-time security research
+- **Without API key**: Sentry works normally but cannot perform web searches
+
+#### Getting a Tavily API Key
+
+1. Sign up at [tavily.com](https://tavily.com/)
+2. Navigate to your dashboard to get your API key
+3. Keys start with `tvly-` prefix
+
+#### Web Search Capabilities
+
+When enabled, Sentry can:
+
+- Search for CVEs and vulnerability information
+- Research threat intelligence and attack techniques
+- Look up technical security documentation
+- Extract content from security advisories and research papers
+
+Web search is focused on security-related topics and will not search for general information, people, or organizations.
+
+---
 
 ### Sentry AI Assistant (Optional Feature)
 

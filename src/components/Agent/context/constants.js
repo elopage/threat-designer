@@ -1,4 +1,3 @@
-export const BUFFER_DELAY_MS = 1;
 export const MAX_SESSIONS = 50;
 
 export const SENTRY_ENABLED = import.meta.env.VITE_SENTRY_ENABLED === "true";

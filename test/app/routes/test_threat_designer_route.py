@@ -725,3 +725,96 @@ class TestErrorHandling:
 
         with pytest.raises(BadRequestError):
             _update_collaborator_access("test-job-123", "user-456")
+
+
+# ============================================================================
+# Batch Download Endpoint Tests
+# ============================================================================
+
+
+class TestBatchDownloadEndpoint:
+    """Tests for batch download route handler validation."""
+
+    @patch("routes.threat_designer_route.router")
+    def test_batch_download_returns_400_for_empty_batch(self, mock_router):
+        """Test _download_batch returns 400 for empty threat_model_ids array."""
+        mock_router.current_event.request_context.authorizer = {"user_id": "user-123"}
+        mock_router.current_event.json_body = {"threat_model_ids": []}
+
+        from routes.threat_designer_route import _download_batch
+
+        result = _download_batch()
+
+        assert result.status_code == 400
+        assert "threat_model_ids array cannot be empty" in result.body
+
+    @patch("routes.threat_designer_route.generate_presigned_download_urls_batch")
+    @patch("routes.threat_designer_route.router")
+    def test_batch_download_succeeds_with_50_items(
+        self, mock_router, mock_generate_batch
+    ):
+        """Test _download_batch succeeds with exactly 50 items."""
+        mock_router.current_event.request_context.authorizer = {"user_id": "user-123"}
+        threat_model_ids = [f"uuid-{i}" for i in range(50)]
+        mock_router.current_event.json_body = {"threat_model_ids": threat_model_ids}
+
+        # Mock successful batch response
+        mock_results = [
+            {
+                "threat_model_id": loc,
+                "presigned_url": f"https://s3.example.com/{loc}",
+                "success": True,
+            }
+            for loc in threat_model_ids
+        ]
+        mock_generate_batch.return_value = mock_results
+
+        from routes.threat_designer_route import _download_batch
+
+        result = _download_batch()
+
+        assert "results" in result
+        assert len(result["results"]) == 50
+        mock_generate_batch.assert_called_once_with(threat_model_ids, "user-123")
+
+    @patch("routes.threat_designer_route.router")
+    def test_batch_download_returns_400_for_51_items(self, mock_router):
+        """Test _download_batch returns 400 for batch size exceeding 50 items."""
+        mock_router.current_event.request_context.authorizer = {"user_id": "user-123"}
+        threat_model_ids = [f"uuid-{i}" for i in range(51)]
+        mock_router.current_event.json_body = {"threat_model_ids": threat_model_ids}
+
+        from routes.threat_designer_route import _download_batch
+
+        result = _download_batch()
+
+        assert result.status_code == 400
+        assert "Batch size cannot exceed 50 items" in result.body
+
+    @patch("routes.threat_designer_route.router")
+    def test_batch_download_returns_400_for_missing_threat_model_ids(self, mock_router):
+        """Test _download_batch returns 400 when threat_model_ids field is missing."""
+        mock_router.current_event.request_context.authorizer = {"user_id": "user-123"}
+        mock_router.current_event.json_body = {}
+
+        from routes.threat_designer_route import _download_batch
+
+        result = _download_batch()
+
+        assert result.status_code == 400
+        assert "Missing required field: threat_model_ids" in result.body
+
+    @patch("routes.threat_designer_route.router")
+    def test_batch_download_returns_400_for_invalid_request_body_format(
+        self, mock_router
+    ):
+        """Test _download_batch returns 400 when threat_model_ids is not an array."""
+        mock_router.current_event.request_context.authorizer = {"user_id": "user-123"}
+        mock_router.current_event.json_body = {"threat_model_ids": "not-an-array"}
+
+        from routes.threat_designer_route import _download_batch
+
+        result = _download_batch()
+
+        assert result.status_code == 400
+        assert "threat_model_ids must be an array" in result.body

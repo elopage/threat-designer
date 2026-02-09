@@ -1,212 +1,241 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 import MessageAvatar from "./MessageAvatar";
 import ChatButtons from "./ChatButtons";
 import ContentResolver from "./ContentResolver";
+import UnifiedThinkingBlock from "./UnifiedThinkingBlock";
 
-const ChatMessage = React.memo(({ message, streaming, isLast, scroll, isParentFirstMount }) => {
-  const [inputHeight, setInputHeight] = React.useState(330);
-  const isEnd = message?.[message.length - 1]?.end === true;
-  const hasScrolled = useRef(false);
+/**
+ * Custom comparison function for ChatMessage memoization.
+ * Compares pre-computed messageBlocks instead of raw messages.
+ *
+ * @param {Object} prevProps - Previous props
+ * @param {Object} nextProps - Next props
+ * @returns {boolean} - True if props are equal (should NOT re-render)
+ */
+const arePropsEqual = (prevProps, nextProps) => {
+  // Always re-render if streaming state changes
+  if (prevProps.streaming !== nextProps.streaming) {
+    return false;
+  }
 
-  // Measure the input area height dynamically
-  useEffect(() => {
-    const measureInputHeight = () => {
-      // Find the input area container
-      const inputContainer = document.querySelector(".chat-input-wrapper");
-      if (inputContainer) {
-        const height = inputContainer.offsetHeight;
-        // The original was 330px, and input is ~162px, so we need ~168px padding
-        // This accounts for margins, padding, and other UI elements
-        const totalHeight = height + 220;
-        setInputHeight(totalHeight);
-      } else {
-        // Fallback to original value if container not found
-        setInputHeight(330);
-      }
-    };
+  // Always re-render if isLast changes
+  if (prevProps.isLast !== nextProps.isLast) {
+    return false;
+  }
 
-    // Measure after a short delay to ensure DOM is ready
-    const timer = setTimeout(measureInputHeight, 100);
+  // Always re-render if isParentFirstMount changes
+  if (prevProps.isParentFirstMount !== nextProps.isParentFirstMount) {
+    return false;
+  }
 
-    // Re-measure when window resizes or when content changes
-    const resizeObserver = new ResizeObserver(measureInputHeight);
-    const inputContainer = document.querySelector(".chat-input-wrapper");
+  // Re-render if webSearchResults changes (for citation resolution)
+  if (prevProps.webSearchResults !== nextProps.webSearchResults) {
+    // Deep compare arrays
+    const prev = prevProps.webSearchResults || [];
+    const next = nextProps.webSearchResults || [];
+    if (prev.length !== next.length) return false;
+  }
 
-    if (inputContainer) {
-      resizeObserver.observe(inputContainer);
+  // Compare pre-computed messageBlocks
+  const prevBlocks = prevProps.messageBlocks;
+  const nextBlocks = nextProps.messageBlocks;
+
+  // If both are null/undefined/empty, they're equal
+  if (!prevBlocks?.length && !nextBlocks?.length) {
+    return true;
+  }
+
+  // If one is empty and the other isn't, they're different
+  if (!prevBlocks?.length || !nextBlocks?.length) {
+    return false;
+  }
+
+  // If lengths differ, they're different
+  if (prevBlocks.length !== nextBlocks.length) {
+    return false;
+  }
+
+  // Compare each block
+  for (let i = 0; i < prevBlocks.length; i++) {
+    const prev = prevBlocks[i];
+    const next = nextBlocks[i];
+
+    if (
+      prev.type !== next.type ||
+      prev.content !== next.content ||
+      prev.id !== next.id ||
+      prev.toolName !== next.toolName ||
+      prev.isComplete !== next.isComplete ||
+      prev.error !== next.error ||
+      prev.interrupted !== next.interrupted ||
+      prev.input !== next.input
+    ) {
+      return false;
     }
+  }
 
-    return () => {
-      clearTimeout(timer);
-      if (inputContainer) {
-        resizeObserver.unobserve(inputContainer);
-      }
-    };
-  }, []);
+  return true;
+};
 
-  useEffect(() => {
-    if (isLast && !hasScrolled.current) {
-      hasScrolled.current = true;
-      const timeout = 60;
+const ChatMessage = React.memo(
+  ({ message, messageBlocks, webSearchResults, streaming, isLast, scroll, isParentFirstMount }) => {
+    const [inputHeight] = React.useState(260);
+    const isEnd = message?.[message.length - 1]?.end === true;
+    const hasScrolled = useRef(false);
+    const messageRef = useRef(null);
 
-      setTimeout(() => {
-        scroll();
-      }, timeout);
-    }
-  }, [isLast, scroll]);
+    // Use pre-computed blocks from buffering layer, fallback to empty array
+    const blocks = messageBlocks || [];
 
-  const messageBlocks = useMemo(() => {
-    if (!message || message.length === 0) return [];
+    // Group all think and tool blocks (including web search) into unified groups
+    // The unified block ends only when a text block appears
+    const groupedBlocks = useMemo(() => {
+      const result = [];
+      let currentUnifiedGroup = null; // For think + tool grouping
 
-    const blocks = [];
-    let currentBlock = null;
-
-    for (let i = 0; i < message.length; i++) {
-      const item = message[i];
-
-      // Skip interrupt messages - they don't influence block calculation
-      if (item.type === "interrupt") {
-        continue;
-      }
-
-      // Skip empty text messages
-      if (item.type === "text" && item.content === "[empty]") {
-        continue;
-      }
-
-      if (item.type === "tool") {
-        // Mark previous non-tool block as complete when transitioning to tool
-        if (currentBlock && currentBlock.type !== "tool") {
-          currentBlock.isComplete = true;
-        }
-
-        // Find existing tool block with the same id (not just the last block)
-        const existingBlockIndex = blocks.findIndex(
-          (block) => block.type === "tool" && block.id === item.id
-        );
-
-        if (existingBlockIndex !== -1) {
-          // Update existing tool block
-          const existingBlock = blocks[existingBlockIndex];
-
-          // Handle tool update case - just update input
-          if (item.tool_update) {
-            existingBlock.input = item.content;
-            existingBlock.items.push(item);
-          }
-          // Handle tool completion case (tool_end)
-          else if (!item.tool_start) {
-            existingBlock.content = item.content;
-            existingBlock.isComplete = true;
-            existingBlock.error = item.error;
-            existingBlock.items.push(item);
-          }
-          // Handle duplicate tool_start - mark previous as interrupted
-          else if (item.tool_start) {
-            existingBlock.isComplete = true;
-            existingBlock.interrupted = true;
-
-            // Create new block for the new tool_start
-            blocks.push({
-              type: "tool",
-              id: item.id,
-              toolName: item.tool_name,
-              content: item.content,
-              isComplete: false,
-              error: item.error,
-              items: [item],
-            });
-          }
-        } else {
-          // Create new tool block
-          blocks.push({
-            type: "tool",
-            id: item.id,
-            toolName: item.tool_name,
-            content: item.content,
-            isComplete: !item.tool_start,
-            error: item.error,
-            items: [item],
+      const flushUnifiedGroup = (markComplete = false) => {
+        if (currentUnifiedGroup) {
+          result.push({
+            ...currentUnifiedGroup,
+            isGroupComplete: markComplete || isEnd,
           });
+          currentUnifiedGroup = null;
         }
-        currentBlock = null;
-      } else if ((item.type === "text" || item.type === "think") && item.content != null) {
-        // Group consecutive items of same type
-        if (currentBlock && currentBlock.type === item.type) {
-          // Continue current block - just add content and item
-          currentBlock.content += item.content;
-          currentBlock.items.push(item);
-        } else {
-          // Mark previous block as complete before starting new block
-          if (currentBlock) {
-            currentBlock.isComplete = true;
-          }
+      };
 
-          // Start new block - always start as incomplete
-          currentBlock = {
-            type: item.type,
-            content: item.content,
-            isComplete: false,
-            items: [item],
-          };
-          blocks.push(currentBlock);
-        }
-      }
-    }
-
-    // Mark all blocks as complete when message ends
-    if (isEnd) {
       blocks.forEach((block) => {
-        block.isComplete = true;
+        // Handle think blocks - add to existing unified group or start new one
+        if (block.type === "think") {
+          if (currentUnifiedGroup) {
+            // Add to existing unified group - preserve order in contentBlocks
+            currentUnifiedGroup.contentBlocks.push(block);
+          } else {
+            // Start a new unified group
+            currentUnifiedGroup = {
+              type: "unified_thinking",
+              contentBlocks: [block], // Array preserving order of think/tool blocks
+              id: `unified_${block.id || result.length}`,
+              isGroupComplete: false,
+              thinkingStartTime: Date.now(),
+            };
+          }
+          return;
+        }
+
+        // Handle ALL tool blocks (including web search tools)
+        if (block.type === "tool") {
+          if (currentUnifiedGroup) {
+            // Add to existing unified group - preserve order in contentBlocks
+            currentUnifiedGroup.contentBlocks.push(block);
+          } else {
+            // Tool without preceding think - start a new unified group
+            currentUnifiedGroup = {
+              type: "unified_thinking",
+              contentBlocks: [block], // Array preserving order
+              id: `unified_${block.id || result.length}`,
+              isGroupComplete: false,
+              thinkingStartTime: Date.now(),
+            };
+          }
+          return;
+        }
+
+        // Handle text blocks - flush all groups (this ends the unified block)
+        if (block.type === "text") {
+          flushUnifiedGroup(true);
+          result.push(block);
+          return;
+        }
+
+        // Default: flush groups and add block as-is
+        flushUnifiedGroup(true);
+        result.push(block);
       });
-    }
 
-    return blocks;
-  }, [message, isEnd]);
+      // Flush remaining groups - only complete if stream ended
+      flushUnifiedGroup(false);
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        columnGap: "8px",
-        width: "100%",
-        marginBottom: "50px",
-        height: isLast && `calc(100vh - ${inputHeight}px)`,
-      }}
-    >
-      <MessageAvatar isUser={false} loading={streaming && !isEnd} />
+      return result;
+    }, [blocks, isEnd]);
 
+    useEffect(() => {
+      if (isLast && !hasScrolled.current) {
+        hasScrolled.current = true;
+        // Use instant scroll on initial page load (Requirement 2.3)
+        // Use smooth scroll for new messages added after initial mount (Requirement 1.1)
+        const useSmooth = !isParentFirstMount;
+        scroll(useSmooth);
+      }
+    }, [isLast, scroll, isParentFirstMount]);
+
+    return (
       <div
         style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: "hidden",
+          display: "flex",
+          alignItems: "flex-start",
+          columnGap: "8px",
+          width: "100%",
+          marginBottom: "50px",
+          height: isLast && `calc(100vh - ${inputHeight}px)`,
         }}
       >
+        <MessageAvatar isUser={false} loading={streaming && !isEnd} />
+
         <div
+          ref={messageRef}
           style={{
-            backgroundColor: "transparent",
-            borderRadius: "8px",
-            marginTop: "-14px",
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
           }}
         >
-          {messageBlocks.map((block, index) => (
-            <div key={index} style={{ marginBottom: "2px" }}>
-              <ContentResolver
-                msg={block}
-                type={block.type}
-                isBlockComplete={block.isComplete}
-                isParentFirstMount={isParentFirstMount}
-              />
-            </div>
-          ))}
+          <div
+            style={{
+              backgroundColor: "",
+            }}
+          >
+            {groupedBlocks.map((block, index) => {
+              const nextBlock = groupedBlocks[index + 1];
 
-          {isEnd && <ChatButtons content={message} />}
+              // Add spacing between all blocks when there's a next block
+              const marginBottom = nextBlock ? "16px" : "2px";
+
+              // Handle unified thinking + tools groups
+              if (block.type === "unified_thinking") {
+                return (
+                  <div key={block.id} style={{ marginBottom }}>
+                    <UnifiedThinkingBlock
+                      contentBlocks={block.contentBlocks}
+                      isGroupComplete={block.isGroupComplete}
+                      thinkingStartTime={block.thinkingStartTime}
+                      isParentFirstMount={isParentFirstMount}
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <div key={index} style={{ marginBottom }}>
+                  <ContentResolver
+                    msg={block}
+                    type={block.type}
+                    isBlockComplete={block.isComplete}
+                    isParentFirstMount={isParentFirstMount}
+                    webSearchResults={webSearchResults}
+                  />
+                </div>
+              );
+            })}
+
+            {isEnd && <ChatButtons content={message} messageRef={messageRef} />}
+          </div>
         </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+  arePropsEqual
+);
+
+ChatMessage.displayName = "ChatMessage";
 
 export default ChatMessage;

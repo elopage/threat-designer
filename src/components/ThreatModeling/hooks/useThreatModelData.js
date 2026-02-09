@@ -4,6 +4,10 @@ import {
   getDownloadUrl,
   getThreatModelingTrail,
 } from "../../../services/ThreatDesigner/stats";
+import {
+  getCachedImageBlob,
+  setCachedImageBlob,
+} from "../../../services/ThreatDesigner/presignedUrlCache";
 
 /**
  * Convert blob to base64 format
@@ -84,10 +88,14 @@ export const useThreatModelData = (
         return acc;
       }, {});
 
+      // Strip notes field from threats to reduce payload size
+      const threatsWithoutNotes = threats.map(({ notes, ...threat }) => threat);
+
       const sessionContext = {
         diagram: threatModelData.s3_location,
         threatModel: {
-          threats: threats,
+          threat_model_id: threatModelId,
+          threats: threatsWithoutNotes,
           summary: threatModelData.summary,
           assumptions: threatModelData.assumptions,
           system_architecture: threatModelData.system_architecture,
@@ -120,8 +128,6 @@ export const useThreatModelData = (
           // Still show Sentry even if context update fails
           setIsVisible(true);
         }
-      } else {
-        console.log("Sentry disabled - session context not sent to backend");
       }
     },
     [threatModelId, updateSessionContext, sentryEnabled, setIsVisible]
@@ -234,7 +240,24 @@ export const useThreatModelData = (
     setLoading(true);
     try {
       const resultsResponse = await getThreatModelingResults(threatModelId);
-      const architectureDiagram = await getDownloadUrl(resultsResponse.data.item.s3_location);
+
+      // Check if image blob is already cached
+      let architectureDiagram;
+      const cachedBlobUrl = getCachedImageBlob(threatModelId);
+
+      if (cachedBlobUrl) {
+        // Convert cached blob URL back to blob for base64 conversion
+        const response = await fetch(cachedBlobUrl);
+        architectureDiagram = await response.blob();
+      } else {
+        // getDownloadUrl makes API call, gets presigned URL, and downloads blob
+        architectureDiagram = await getDownloadUrl(threatModelId);
+
+        // Cache the blob URL for future use
+        const objectUrl = URL.createObjectURL(architectureDiagram);
+        setCachedImageBlob(threatModelId, objectUrl);
+      }
+
       const base64Data = await blobToBase64(architectureDiagram);
 
       setBase64Content(base64Data);
